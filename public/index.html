@@ -1,0 +1,42 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Optiwize Lokal — MikroTik Manager</title>
+<style>body{font-family:system-ui;margin:0;background:#0f172a;color:#e2e8f0}header{padding:14px 18px;background:#1e293b;display:flex;gap:12px;align-items:center}nav button{background:#334155;color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}nav button.on{background:#2563eb}main{padding:16px;max-width:1100px;margin:auto}table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden}td,th{padding:8px 10px;border-bottom:1px solid #334155;font-size:13px;text-align:left}input,select,textarea{background:#0b1220;color:#fff;border:1px solid #334155;border-radius:8px;padding:7px 9px}button.act{background:#2563eb;color:#fff;border:0;padding:7px 11px;border-radius:8px;cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:#1e293b;padding:12px;border-radius:10px}pre{white-space:pre-wrap;background:#0b1220;padding:10px;border-radius:8px;font-size:12px;max-height:320px;overflow:auto}.ok{color:#4ade80}.bad{color:#f87171}</style>
+</head><body>
+<header><b>Optiwize Lokal</b><span style="opacity:.7">clone mini OptiWize.cloud — &lt;20 devices · port 8932</span>
+<nav style="margin-left:auto;display:flex;gap:6px">
+<button data-t="devices" class="on">Devices</button><button data-t="backup">Backup</button><button data-t="monitor">Monitoring</button><button data-t="tpl">Templates</button><button data-t="ts">Troubleshoot</button><button data-t="alerts">Alerts</button>
+</nav></header>
+<main>
+<section id="devices"><div class="card"><h3>Tambah device</h3>
+<input id="d-name" placeholder="nama"> <input id="d-host" placeholder="host/IP"> <input id="d-user" placeholder="user" value="admin"> <input id="d-pass" placeholder="password" type="password">
+<select id="d-mode"><option value="demo">demo</option><option value="real">real (RouterOS REST)</option></select>
+<button class="act" onclick="addDev()">Tambah</button></div><br><table><thead><tr><th>Nama</th><th>Host</th><th>Mode</th><th>Aksi</th></tr></thead><tbody id="dev-rows"></tbody></table></section>
+<section id="backup" hidden><div class="card">Pilih device: <select id="b-dev"></select> <button class="act" onclick="doBackup()">Backup sekarang</button> <button class="act" onclick="loadBackups()">Refresh</button></div><br><table><thead><tr><th>TS</th><th>Kind</th><th>Size</th><th>Hash</th><th>Aksi</th></tr></thead><tbody id="b-rows"></tbody></table><pre id="b-view"></pre></section>
+<section id="monitor" hidden><button class="act" onclick="loadSummary()">Refresh summary</button><br><br><div id="mon" class="grid"><div class="card"><b>GW-Jakarta-01</b> <span class="ok">ONLINE</span><br>lat:14ms cpu:43% mem:52%<br>rx:1.2Mbps tx:800kbps<br>backup:1x<br><small>demo-simulated 2026-10-07T18:07:15.299Z</small></div><div class="card"><b>CPE-Bandung-02</b> <span class="ok">ONLINE</span><br>lat:10ms cpu:44% mem:45%<br>rx:900kbps tx:600kbps<br>backup:1x<br><small>demo-simulated 2026-10-07T18:07:15.307Z</small></div></div></section>
+<section id="tpl" hidden><div class="card"><h3>Template baru</h3><input id="t-name" placeholder="nama" style="width:220px"><br><br><textarea id="t-body" rows="5" cols="80" placeholder="/ip dns set servers=8.8.8.8&#10;/system ntp client set enabled=yes"></textarea><br><br><button class="act" onclick="addTpl()">Simpan</button></div><br><div id="tpls" class="grid"></div></section>
+<section id="ts" hidden><div class="card">Device: <select id="ts-dev"></select> <button class="act" onclick="loadTs()">Cek resource+log</button></div><br><pre id="ts-view"></pre></section>
+<section id="alerts" hidden><button class="act" onclick="loadAlerts()">Refresh</button><br><br><table><thead><tr><th>ID</th><th>Device</th><th>Level</th><th>Msg</th><th>Ack</th></tr></thead><tbody id="a-rows"></tbody></table></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.querySelectorAll('main>section').forEach(s=>s.hidden=true);document.querySelector('#'+b.dataset.t).hidden=false;});
+const api=async(m,p,b)=>{const r=await fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});return r.json();};
+async function refresh(){const d=await api('GET','/api/devices');$('#dev-rows').innerHTML=d.map(x=>`<tr><td>${x.name}</td><td>${x.host}</td><td>${x.mode}</td><td><button onclick="testDev('${x.id}')">test</button> <button onclick="delDev('${x.id}')">hapus</button></td></tr>`).join('');
+$('#b-dev').innerHTML=d.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');$('#ts-dev').innerHTML=$('#b-dev').innerHTML;
+const t=await api('GET','/api/templates');$('#tpls').innerHTML=t.map(x=>`<div class="card"><b>${x.name}</b><pre>${x.body.slice(0,600)}</pre><select class="ap-dev">${d.map(y=>`<option value="${y.id}">${y.name}</option>`).join('')}</select> <button class="act" onclick="applyTpl('${x.id}',this)">Apply</button></div>`).join('');}
+async function addDev(){await api('POST','/api/devices',{name:$('#d-name').value,host:$('#d-host').value,username:$('#d-user').value,password:$('#d-pass').value,mode:$('#d-mode').value});refresh();}
+async function delDev(id){await api('DELETE','/api/devices/'+id);refresh();}
+async function testDev(id){alert(JSON.stringify(await api('POST',`/api/devices/${id}/test`)));}
+async function loadBackups(){const id=$('#b-dev').value;const r=await api('GET',`/api/devices/${id}/backups`);$('#b-rows').innerHTML=r.map(x=>`<tr><td>${x.ts}</td><td>${x.kind}</td><td>${x.size}</td><td>${x.hash}</td><td><button onclick="viewB('${x.id}')">lihat</button> <button onclick="diffB('${x.id}')">diff</button> <button onclick="restB('${x.id}')">restore</button></td></tr>`).join('');}
+async function doBackup(){await api('POST',`/api/devices/${$('#b-dev').value}/backup`);loadBackups();}
+async function viewB(id){$('#b-view').textContent=JSON.stringify(await api('GET','/api/backups/'+id+'?full=1'),null,2).slice(0,8000);}
+async function diffB(id){$('#b-view').textContent=JSON.stringify(await api('GET',`/api/backups/${id}/diff`),null,2);}
+async function restB(id){alert(JSON.stringify(await api('POST',`/api/backups/${id}/restore`)).slice(0,500));}
+async function loadSummary(){const s=await api('GET','/api/monitor/summary');$('#mon').innerHTML=s.map(x=>{const last=x.last;return`<div class="card"><b>${x.device.name}</b> <span class="${last?.reachable?'ok':'bad'}">${last?(last.reachable?'ONLINE':'OFFLINE'):'?'}</span><br>lat:${last?.latency_ms}ms cpu:${last?.cpu}% mem:${last?.mem_pct}%<br>rx:${last?.rx_mbps?.toFixed(1) ?? 0}Mbps tx:${last?.tx_mbps?.toFixed(1) ?? 0}Mbps<br>backup:${x.backups}x<br><small>${last?.note||''} ${last?.ts||''}</small></div>`}).join('');}
+async function addTpl(){await api('POST','/api/templates',{name:$('#t-name').value,body:$('#t-body').value});refresh();}
+async function applyTpl(tid,btn){const dev=btn.parentElement.querySelector('.ap-dev').value;const wan=prompt('WAN var (untuk {{WAN}}), kosongkan bila tidak perlu','ether1');alert(JSON.stringify(await api('POST',`/api/templates/${tid}/apply/${dev}`,{vars:{WAN:wan||''}})).slice(0,800));}
+async function loadTs(){const id=$('#ts-dev').value;$('#ts-view').textContent=JSON.stringify(await api('GET','/api/troubleshoot/'+id),null,2).slice(0,8000);}
+async function loadAlerts(){const a=await api('GET','/api/alerts');$('#a-rows').innerHTML=a.map(x=>`<tr><td>${x.id}</td><td>${x.dev}</td><td>${x.level}</td><td>${x.msg}</td><td>${x.ack? 'ya': `<button onclick="ack(${x.id})">ack</button>`}</td></tr>`).join('');}
+async function ack(id){await api('POST','/api/alerts/'+id+'/ack');loadAlerts();}
+refresh();loadSummary();
+</script></body></html>
